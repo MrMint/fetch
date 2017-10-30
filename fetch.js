@@ -1,8 +1,12 @@
 (function(self) {
   'use strict';
 
-  if (self.fetch) {
-    return
+  if (self.fetch && self.Request) {
+      var request = new self.Request('/', { signal: {} });
+    
+      if (request.signal) {
+        return
+      }
   }
 
   var support = {
@@ -40,6 +44,20 @@
     var isArrayBufferView = ArrayBuffer.isView || function(obj) {
       return obj && viewClasses.indexOf(Object.prototype.toString.call(obj)) > -1
     }
+  }
+
+  function abortError(){
+    var err;
+    try {
+      err = new DOMException('Aborted', 'AbortError');
+    } catch (err) {
+      // IE 11 does not support calling the DOMException constructor, use a
+      // regular error object on it instead.
+      err = new Error('Aborted');
+      err.name = 'AbortError';
+    }
+  
+    return err
   }
 
   function normalizeName(name) {
@@ -315,6 +333,7 @@
       if (!options.headers) {
         this.headers = new Headers(input.headers)
       }
+      this.signal = input.signal
       this.method = input.method
       this.mode = input.mode
       if (!body && input._bodyInit != null) {
@@ -332,6 +351,7 @@
     this.method = normalizeMethod(options.method || this.method || 'GET')
     this.mode = options.mode || this.mode || null
     this.referrer = null
+    this.signal = options.signal || this.signal || null
 
     if ((this.method === 'GET' || this.method === 'HEAD') && body) {
       throw new TypeError('Body not allowed for GET or HEAD requests')
@@ -424,6 +444,17 @@
       var request = new Request(input, init)
       var xhr = new XMLHttpRequest()
 
+      if (request.signal) {
+        if (request.signal.aborted) {
+          return reject(abortError());
+        }
+        
+        request.signal.addEventListener('abort', function () {
+          reject(abortError())
+          xhr.abort();
+        }, {once: true});
+      }
+    
       xhr.onload = function() {
         var options = {
           status: xhr.status,
